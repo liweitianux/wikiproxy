@@ -19,6 +19,19 @@ local _M = {
         -- Validity time of a successful authentication.
         ttl = 3600, -- [seconds]
     },
+
+    -- DNS settings for resolving domain names.
+    -- This is unnecessary if the socks5h variant is used.
+    dns = {
+        nameservers = { "127.0.0.1" },
+        timeout = 2, -- [seconds]
+        retrans = 2, -- retransmissions on receive timeout
+        prefer_ipv6 = false, -- whether prefer ipv4?
+        cache = { -- LRU cache settings
+            size = 256,
+            ttl = 600, -- [seconds]
+        },
+    },
 }
 
 
