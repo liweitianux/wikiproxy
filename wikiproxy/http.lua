@@ -8,6 +8,7 @@
 
 local error = error
 local ipairs = ipairs
+local math = math
 local pairs = pairs
 local rawget = rawget
 local rawset = rawset
@@ -19,6 +20,8 @@ local tostring = tostring
 local type = type
 
 local ngx = ngx
+
+local xdns = require("wikiproxy.dns")
 
 ------------------------------------------------------------------------
 
@@ -121,12 +124,26 @@ function Client.set_keepalive(self)
 end
 
 
--- NOTE: If <host> is a domain name, the Nginx's core resolver will be used
---       to resolve it, so the 'resolver' option must be configured.
 -- TODO: support socks5 proxy ...
 function Client.connect(self, host, port, options)
     local sock = self.sock
 
+    local addrs, err = xdns.resolve(host)
+    if not addrs then
+        ngx.log(ngx.ERR, "failed to resolve [", host, "]: ", err)
+        return nil, err
+    end
+
+    local n = #addrs
+    if n > 1 then
+        n = math.random(n)
+    end
+    host = addrs[n]
+
+    -- NOTE: sock:connect() supports to resolve a domain name using the
+    --       Nginx's core resolver configured with the 'resolver' option.
+    --       However, we perform the resolution above for fine control and
+    --       better maintainbility.
     local ok, err = sock:connect(host, port, { pool = options.pool_name })
     if not ok then
         ngx.log(ngx.ERR, "failed to connect: host=", host,
