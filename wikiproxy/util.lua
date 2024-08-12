@@ -4,6 +4,8 @@
 -- Utilities
 --
 
+local string = string
+
 local ngx_re = ngx.re
 
 -- Credit: https://stackoverflow.com/a/17871737
@@ -23,9 +25,18 @@ function _M.is_ipv4(addr)
 end
 
 
-function _M.is_ipv6(addr)
+-- Check whether <addr> is an IPv6 address?
+-- If <bracketed> is true, then also supports a bracket-enclosed IPv6
+-- address, like one appearing in URL.
+function _M.is_ipv6(addr, bracketed)
     if not addr or addr == "" then
         return false
+    end
+    if not string.find(addr, ":", 1, true) then
+        return false
+    end
+    if bracketed and string.sub(addr, 1, 1) == "[" then
+        addr = string.sub(addr, 2, #addr - 1)
     end
     return ngx_re.find(addr, ipv6_regex, "jo") ~= nil
 end
