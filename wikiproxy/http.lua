@@ -144,6 +144,7 @@ function Client.connect(self, host, port, options)
     --       Nginx's core resolver configured with the 'resolver' option.
     --       However, we perform the resolution above for fine control and
     --       better maintainbility.
+    -- NOTE: IPv6 address must be enclosed in [] for connect().
     local ok, err = sock:connect(host, port, { pool = options.pool_name })
     if not ok then
         ngx.log(ngx.ERR, "failed to connect: host=", host,

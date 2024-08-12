@@ -50,8 +50,15 @@ end
 local _M = {}
 
 
+-- NOTE: IPv6 address would be enclosed in brackets [], as required by
+--       connect() and other routines.
 function _M.resolve(name)
-    if xutil.is_ipv4(name) or xutil.is_ipv6(name) then
+    if xutil.is_ipv4(name) then
+        return name
+    elseif xutil.is_ipv6(name, true) then
+        if string.sub(name, 1, 1) ~= "[" then
+            name = "[" .. name .. "]"
+        end
         return name
     end
 
@@ -100,7 +107,11 @@ function _M.resolve(name)
                         ", result: ", ans.address or ans.cname)
                 if ans.type == qtype then
                     n = n + 1
-                    addrs[n] = ans.address
+                    if qtype == r.TYPE_AAAA then
+                        addrs[n] = "[" .. ans.address .. "]"
+                    else
+                        addrs[n] = ans.address
+                    end
                 end
             end
         end
