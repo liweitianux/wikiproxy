@@ -55,11 +55,12 @@ local _M = {}
 function _M.resolve(name)
     if xutil.is_ipv4(name) then
         return name
-    elseif xutil.is_ipv6(name, true) then
-        if string.sub(name, 1, 1) ~= "[" then
-            name = "[" .. name .. "]"
+    else
+        local ok, ip6 = xutil.is_ipv6(name, true)
+        if ok then
+            return "[" .. ip6 .. "]"
         end
-        return name
+        -- else: assume a domain name.
     end
 
     name = string.lower(name)

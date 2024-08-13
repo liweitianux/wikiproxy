@@ -35,10 +35,14 @@ function _M.is_ipv6(addr, bracketed)
     if not string.find(addr, ":", 1, true) then
         return false
     end
-    if bracketed and string.sub(addr, 1, 1) == "[" then
+    if bracketed and string.byte(addr, 1) == string.byte("[") then
         addr = string.sub(addr, 2, #addr - 1)
     end
-    return ngx_re.find(addr, ipv6_regex, "jo") ~= nil
+    if ngx_re.find(addr, ipv6_regex, "jo") then
+        return true, addr
+    else
+        return false
+    end
 end
 
 
