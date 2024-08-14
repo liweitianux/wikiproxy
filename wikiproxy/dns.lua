@@ -54,11 +54,11 @@ local _M = {}
 --       connect() and other routines.
 function _M.resolve(name)
     if xutil.is_ipv4(name) then
-        return name
+        return { name }
     else
         local ok, ip6 = xutil.is_ipv6(name, true)
         if ok then
-            return "[" .. ip6 .. "]"
+            return { "[" .. ip6 .. "]" }
         end
         -- else: assume a domain name.
     end
