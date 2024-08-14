@@ -20,7 +20,7 @@ end
 
 
 function _M.access_phase()
-    require("wikiproxy.request").handle()
+    require("wikiproxy.auth").handle()
 end
 
 
