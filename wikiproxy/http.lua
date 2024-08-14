@@ -22,6 +22,7 @@ local type = type
 local ngx = ngx
 
 local xdns = require("wikiproxy.dns")
+local xsocks5 = require("wikiproxy.socks5")
 
 ------------------------------------------------------------------------
 
@@ -124,27 +125,34 @@ function Client.set_keepalive(self)
 end
 
 
--- TODO: support socks5 proxy ...
 function Client.connect(self, host, port, options)
-    local sock = self.sock
-
-    local addrs, err = xdns.resolve(host)
-    if not addrs then
-        ngx.log(ngx.ERR, "failed to resolve [", host, "]: ", err)
-        return nil, err
+    local proxy, err
+    if options.proxy then
+        proxy, err = xsocks5.new(self.sock, options.proxy)
+        if not proxy then
+            return nil, err
+        end
     end
-
-    local n = #addrs
-    if n > 1 then
-        n = math.random(n)
-    end
-    host = addrs[n]
 
     -- NOTE: sock:connect() supports to resolve a domain name using the
     --       Nginx's core resolver configured with the 'resolver' option.
-    --       However, we perform the resolution above for fine control and
-    --       better maintainbility.
+    --       However, we resolve it myself to simplify the config file.
     -- NOTE: IPv6 address must be enclosed in [] for connect().
+    if not (proxy and proxy:is_socks5h()) then
+        local addrs, err = xdns.resolve(host)
+        if not addrs then
+            ngx.log(ngx.ERR, "failed to resolve [", host, "]: ", err)
+            return nil, err
+        end
+        local n = #addrs
+        if n > 1 then
+            n = math.random(n)
+        end
+        host = addrs[n]
+    end
+
+    local sock = proxy and proxy or self.sock
+
     local ok, err = sock:connect(host, port, { pool = options.pool_name })
     if not ok then
         ngx.log(ngx.ERR, "failed to connect: host=", host,
@@ -162,8 +170,8 @@ function Client.connect(self, host, port, options)
         end
     end
 
-    ngx.log(ngx.DEBUG, "connected to: host=", host,
-            ", port=", port, ", ssl=", options.ssl)
+    ngx.log(ngx.DEBUG, "connected to: host=", host, ", port=", port,
+            ", ssl=", options.ssl, ", proxy=", options.proxy)
     return true, nil
 end
 
@@ -462,7 +470,7 @@ end
 --
 -- Object <options>:
 -- + ssl_verify: (bool) whether to perform SSL verification? (default: false)
--- + proxy: (TODO)
+-- + proxy: (string) socks5/socks5h proxy URL
 --
 -- Return: <res>, <err>
 -- Result object <res>:
@@ -491,6 +499,7 @@ function _M.request(req, options)
         ssl = is_https,
         ssl_verify = options.ssl_verify,
         ssl_server_name = sni,
+        proxy = options.proxy,
     }
     local ok, err = client:connect(host, port, opts)
     if not ok then
