@@ -4,9 +4,12 @@
 -- Utilities
 --
 
+local assert = assert
 local string = string
 
 local ngx_re = ngx.re
+
+local bit = require("bit") -- require LuaJIT
 
 -- Credit: https://stackoverflow.com/a/17871737
 -- See also: https://stackoverflow.com/a/36760050
@@ -93,5 +96,86 @@ for addr in string.gmatch(addrs, "[^\n]+") do
 end
 --]=]
 
+
+function _M.htobe16(n)
+    assert(n >= 0 and n <= 65535)
+    return string.char(bit.band(0xFF, bit.rshift(n, 8)), bit.band(0xFF, n))
+end
+
+------------------------------------------------------------------------
+
+local ffi = require("ffi")
+local C = ffi.C
+
+ffi.cdef[[
+typedef uint32_t        in_addr_t;
+typedef unsigned char   u_char;
+typedef intptr_t        ngx_int_t; /* nginx/src/core/ngx_config.h */
+
+/* nginx/src/core/ngx_inet.h */
+in_addr_t ngx_inet_addr(u_char *text, size_t len);
+ngx_int_t ngx_inet6_addr(u_char *p, size_t len, u_char *addr);
+]]
+
+local inaddr_none = ffi.cast("in_addr_t", 0xFFFFFFFF)
+local inet6_ibufsize = 64
+local inet6_ibuffer = ffi.new(ffi.typeof("u_char[?]"), inet6_ibufsize)
+local inet6_obuffer = ffi.new(ffi.typeof("u_char[?]"), 16)
+
+-- Convert IPv4 address from text format to binary format.
+function _M.inet_addr(ip4)
+    -- The Nginx function is declared with type 'u_char *' rather than
+    -- 'const u_char *', so FFI prevents from passing Lua string to it.
+    local len = #ip4
+    if len > inet6_ibufsize then
+        return nil, "invalid ipv4 address"
+    end
+    local ibuf = inet6_ibuffer
+    ffi.copy(ibuf, ip4, len)
+
+    local addr = C.ngx_inet_addr(ibuf, len)
+    if addr == inaddr_none then
+        return nil, "invalid ipv4 address"
+    end
+
+    local addrp = ffi.new("in_addr_t[1]", addr)
+    local obuf = inet6_obuffer
+    ffi.copy(obuf, addrp, 4)
+    return ffi.string(obuf, 4)
+end
+
+-- Convert IPv6 address from text format to binary format.
+function _M.inet6_addr(ip6)
+    local len = #ip6
+    if len > inet6_ibufsize then
+        return nil, "invalid ipv6 address"
+    end
+    local ibuf = inet6_ibuffer
+    ffi.copy(ibuf, ip6, len)
+
+    local obuf = inet6_obuffer
+    local rc = C.ngx_inet6_addr(ibuf, len, obuf)
+    if rc ~= 0 then
+        return nil, "invalid ipv6 address"
+    end
+    return ffi.string(obuf, 16)
+end
+
+do
+    local addr
+
+    addr = _M.inet_addr("111111")
+    assert(addr == nil)
+
+    addr = _M.inet_addr("127.0.0.1")
+    assert(addr == "\127\0\0\1")
+    ngx.log(ngx.INFO, "inet_addr() test passed")
+
+    addr = _M.inet6_addr("::1")
+    assert(addr == "\0\0\0\0".."\0\0\0\0".."\0\0\0\0".."\0\0\0\1")
+    ngx.log(ngx.INFO, "inet6_addr() test passed")
+end
+
+------------------------------------------------------------------------
 
 return _M
