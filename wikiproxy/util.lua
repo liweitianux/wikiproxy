@@ -5,6 +5,8 @@
 --
 
 local assert = assert
+local error = error
+local setmetatable = setmetatable
 local string = string
 
 local ngx_re = ngx.re
@@ -177,5 +179,11 @@ do
 end
 
 ------------------------------------------------------------------------
+
+setmetatable(_M, {
+    __newindex = function ()
+        error("modification forbidden", 2)
+    end,
+})
 
 return _M

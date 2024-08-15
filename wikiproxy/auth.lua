@@ -4,6 +4,11 @@
 -- Handle request and process access phase.
 --
 
+local error = error
+local require = require
+local setmetatable = setmetatable
+local tostring = tostring
+
 local ngx = ngx
 
 local xconfig = require("wikiproxy.config")

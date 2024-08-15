@@ -3,6 +3,11 @@
 -- WikiProxy Lua module
 --
 
+local error = error
+local package = package
+local require = require
+local setmetatable = setmetatable
+
 local ngx = ngx
 
 local _M = {}
