@@ -4,9 +4,39 @@
 -- Configurations
 --
 
+local error = error
+local setmetatable = setmetatable
+
 local ngx = ngx
 
 local _M = {
+    -- Configure the Wikipedia sites and domain transformations.
+    wikis = {
+        -- English
+        -- domain to serve the proxy -> configs
+        ["en.example.com"] = {
+            -- List of domain transformations.
+            -- (reuse the single domain to proxy the whole site)
+            domains = {
+                -- [1] wikipedia's domain name
+                -- [2] transformed path (NOTE: start and end with '/')
+                { "en.wikipedia.org",       "/.wp/" },
+                { "en.m.wikipedia.org",     "/.wp-m/" },
+                { "www.wikimedia.org",      "/.wp-wm-www/" },
+                { "upload.wikimedia.org",   "/.wp-wm-upload/" },
+            },
+        },
+        -- Chinese
+        ["zh.example.com"] = {
+            domains = {
+                { "zh.wikipedia.org",       "/.wp/" },
+                { "zh.m.wikipedia.org",     "/.wp-m/" },
+                { "www.wikimedia.org",      "/.wp-wm-www/" },
+                { "upload.wikimedia.org",   "/.wp-wm-upload/" },
+            },
+        },
+    },
+
     -- Configure the simple authentication function.
     -- (implemented to protect from crawlers and public accesses/abuses)
     auth = {
