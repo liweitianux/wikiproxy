@@ -51,9 +51,9 @@ local _M = {
     },
 
     -- DNS settings for resolving domain names.
-    -- This is unnecessary if the socks5h variant is used.
+    -- (unnecessary if use the socks5h variant proxy)
     dns = {
-        nameservers = { "127.0.0.1" },
+        nameservers = { "127.0.0.1", "[::1]" },
         timeout = 2, -- [seconds]
         retrans = 2, -- retransmissions on receive timeout
         prefer_ipv6 = false, -- whether prefer ipv4?
@@ -62,6 +62,10 @@ local _M = {
             ttl = 600, -- [seconds]
         },
     },
+
+    -- SOCKS5 proxy to use.
+    -- (also support the socks5h variant: let remote resolve the domain)
+    proxy = "socks5h://127.0.0.1:1080",
 }
 
 
