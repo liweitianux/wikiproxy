@@ -70,6 +70,7 @@ function _M.new(sock, url)
         scheme = scheme,
         host = host,
         port = port,
+        reused_times = 0,
     }
     setmetatable(obj, {
         __index = function (table, key)
@@ -249,6 +250,12 @@ function _M.connect(self, host, port, options)
         return nil, err
     end
 
+    self.reused_times = sock:getreusedtimes()
+    if self.reused_times > 0 then
+        ngx.log(ngx.DEBUG, "connection is reused; skip socks5 setup")
+        return true
+    end
+
     ok, err = send_greeting(sock)
     if not ok then
         return err
@@ -276,6 +283,11 @@ end
 --      that didn't work.  Maybe the 'self' was wrong in that case...
 --      Therefore, explicitly wrap the required methods for 'self.sock'.
 function _M.sslhandshake(self, ...)
+    if self.reused_times > 0 then
+        ngx.log(ngx.DEBUG, "connection is reused; skip ssl handshake")
+        return true
+    end
+
     ngx.log(ngx.DEBUG, "trying ssl handshake ...")
     return self.sock:sslhandshake(...)
 end
