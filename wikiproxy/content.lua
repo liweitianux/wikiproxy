@@ -18,8 +18,33 @@ local ngx_req = ngx.req
 local xconfig = require("wikiproxy.config")
 local xhttp = require("wikiproxy.http")
 
-local _M = {}
+------------------------------------------------------------------------
 
+-- Recover the original domain and path.
+local function unmap_path(path, wiki)
+    local domain
+    for _, m in ipairs(wiki.maps) do
+        local d_wiki, prefix = m[1], m[2]
+        if prefix == "/" then
+            domain = d_wiki -- default domain
+        else
+            local len = #prefix
+            if string.sub(path, 1, len) == prefix then
+                domain = d_wiki
+                path = string.sub(path, len)
+                break
+            end
+        end
+    end
+
+    if not domain then
+        local err = "unknown path"
+        ngx.log(ngx.ERR, err, ": ", path)
+        return nil, nil, err
+    end
+
+    return domain, path
+end
 
 -- Read the content of request body, which may be either in a memory buffer
 -- or in a temporary file.
@@ -47,26 +72,15 @@ local function get_body()
     return body
 end
 
-local function make_request(host, wiki)
+local function make_request(wiki)
     local body, err = get_body() -- body may be nil
     if err then
         return nil, err
     end
 
     local path = ngx.var.uri
-    local target
-    for _, dd in ipairs(wiki.domains) do
-        local d_wiki, d_our = dd[1], dd[2]
-        local len = #d_our
-        if string.sub(path, 1, len) == d_our then
-            target = d_wiki
-            path = string.sub(path, len)
-            break
-        end
-    end
-    if not target then
-        err = "unknown path"
-        ngx.log(ngx.ERR, err, ": ", path)
+    local domain, path, err = unmap_path(path, wiki)
+    if err then
         return nil, err
     end
 
@@ -76,13 +90,13 @@ local function make_request(host, wiki)
     -- but loop to locate the Host key just to be future-proof.
     for k, _ in pairs(headers) do
         if string.lower(k) == "host" then
-            headers[k] = target
+            headers[k] = domain
         end
     end
 
     return {
         scheme = "https",
-        server = { target, 443 },
+        server = { domain, 443 },
         method = ngx_req.get_method(),
         path = path,
         query = ngx.var.args,
@@ -90,6 +104,10 @@ local function make_request(host, wiki)
         body = body,
     }
 end
+
+------------------------------------------------------------------------
+
+local _M = {}
 
 function _M.handle()
     local host = ngx.var.host
@@ -99,7 +117,7 @@ function _M.handle()
         return ngx.say("404 not found")
     end
 
-    local req, err = make_request(host, wiki)
+    local req, err = make_request(wiki)
     if not req then
         ngx.status = ngx.HTTP_BAD_REQUEST
         return ngx.say("400 bad request: cannot make request")

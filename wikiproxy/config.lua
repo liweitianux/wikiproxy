@@ -5,6 +5,7 @@
 --
 
 local error = error
+local pairs = pairs
 local setmetatable = setmetatable
 
 local ngx = ngx
@@ -14,22 +15,24 @@ local _M = {
     wikis = {
         -- English
         -- domain to serve the proxy -> configs
-        ["en.example.com"] = {
+        ["en.wikiproxy.example.com"] = {
+            domain = "<auto>", -- Will be auto set to the key/domain.
             -- List of domain transformations.
             -- (reuse the single domain to proxy the whole site)
-            domains = {
+            maps = {
                 -- [1] wikipedia's domain name
-                -- [2] transformed path (NOTE: start and end with '/')
-                { "en.wikipedia.org",       "/.wp/" },
+                -- [2] transformed path prefix (NOTE: start and end with '/')
+                { "en.wikipedia.org",       "/" },
                 { "en.m.wikipedia.org",     "/.wp-m/" },
                 { "www.wikimedia.org",      "/.wp-wm-www/" },
                 { "upload.wikimedia.org",   "/.wp-wm-upload/" },
             },
         },
         -- Chinese
-        ["zh.example.com"] = {
-            domains = {
-                { "zh.wikipedia.org",       "/.wp/" },
+        ["zh.wikiproxy.example.com"] = {
+            domain = "<auto>",
+            maps = {
+                { "zh.wikipedia.org",       "/" },
                 { "zh.m.wikipedia.org",     "/.wp-m/" },
                 { "www.wikimedia.org",      "/.wp-wm-www/" },
                 { "upload.wikimedia.org",   "/.wp-wm-upload/" },
@@ -67,6 +70,11 @@ local _M = {
     -- (also support the socks5h variant: let remote resolve the domain)
     proxy = "socks5h://127.0.0.1:1080",
 }
+
+-- Fill the 'domain' field in wikis.
+for k, v in ipairs(_M.wikis) do
+    v.domain = k
+end
 
 
 setmetatable(_M, {
