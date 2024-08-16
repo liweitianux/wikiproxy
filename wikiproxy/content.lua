@@ -123,25 +123,29 @@ function _M.handle()
         return ngx.say("400 bad request: cannot make request")
     end
 
+    -- Request to Wikipedia.
     local res, err = xhttp.request(req, { proxy = xconfig.proxy })
     if not res then
         ngx.status = ngx.HTTP_BAD_REQUEST
         return ngx.say("400 bad request: cannot proxy request")
     end
 
-    -- TODO: content substitution (support gzip decomp)
-    -- TODO: also location (-> mobile redirection)
+    -- Adjust headers.
+    res.headers["Connection"] = nil -- Nginx will auto set this.
+    res.headers["Trailer"] = nil
 
+    -- TODO: location substitution (-> mobile redirection)
+    -- TODO: content substitution (support gzip decomp)
+
+    -- Send response.
     ngx.status = res.status
     for k, v in pairs(res.headers) do
         ngx.header[k] = v
     end
-    ngx.header["Connection"] = nil -- avoid duplicate header
     if res.trailers then
         for k, v in pairs(res.trailers) do
             ngx.header[k] = v
         end
-        ngx.header["Trailer"] = nil
     end
     if res.body then
         ngx.print(res.body)
