@@ -19,31 +19,27 @@ local xconfig = require("wikiproxy.config")
 local xhttp = require("wikiproxy.http")
 
 ------------------------------------------------------------------------
+-- Preprocess the 'wikis' config.
+local wikis = {}
+for _, w in ipairs(xconfig.wikis) do
+    wikis[w.host] = w
+    -- TODO: more for re.gsub()
+end
+
+------------------------------------------------------------------------
 
 -- Recover the original domain and path.
 local function unmap_path(path, wiki)
-    local domain
     for _, m in ipairs(wiki.maps) do
         local d_wiki, prefix = m[1], m[2]
-        if prefix == "/" then
-            domain = d_wiki -- default domain
-        else
-            local len = #prefix
-            if string.sub(path, 1, len) == prefix then
-                domain = d_wiki
-                path = string.sub(path, len)
-                break
-            end
+        local len = #prefix
+        if string.sub(path, 1, len) == prefix then
+            path = string.sub(path, len)
+            return d_wiki, path
         end
     end
 
-    if not domain then
-        local err = "unknown path"
-        ngx.log(ngx.ERR, err, ": ", path)
-        return nil, nil, err
-    end
-
-    return domain, path
+    return wiki.domain, path
 end
 
 -- Read the content of request body, which may be either in a memory buffer
@@ -111,7 +107,7 @@ local _M = {}
 
 function _M.handle()
     local host = ngx.var.host
-    local wiki = xconfig.wikis[host]
+    local wiki = wikis[host]
     if not wiki then
         ngx.status = ngx.HTTP_NOT_FOUND
         return ngx.say("404 not found")
