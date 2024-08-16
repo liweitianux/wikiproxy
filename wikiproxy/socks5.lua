@@ -293,6 +293,11 @@ function _M.sslhandshake(self, ...)
 end
 
 
+function _M.getreusedtimes(self)
+    return self.sock:getreusedtimes()
+end
+
+
 setmetatable(_M, {
     __newindex = function ()
         error("modification forbidden", 2)

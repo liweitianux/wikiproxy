@@ -160,7 +160,7 @@ function Client.connect(self, host, port, options)
         return nil, err
     end
 
-    if options.ssl then
+    if options.ssl and sock:getreusedtimes() == 0 then
         local sni = options.ssl_server_name
         ok, err = sock:sslhandshake(nil, sni, options.ssl_verify)
         if not ok then
