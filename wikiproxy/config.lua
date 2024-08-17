@@ -22,10 +22,10 @@ local _M = {
             -- (reuse the single domain to proxy the whole wikipedia site)
             maps = {
                 -- [1] wikipedia's domain name
-                -- [2] mapped path prefix (NOTE: start and end with '/')
-                { "en.m.wikipedia.org",     "/.wp-m/" },
-                { "www.wikimedia.org",      "/.wp-wm-www/" },
-                { "upload.wikimedia.org",   "/.wp-wm-upload/" },
+                -- [2] mapped path prefix (NOTE: only start with '/')
+                { "en.m.wikipedia.org",     "/.wp-m" },
+                { "www.wikimedia.org",      "/.wp-wm-www" },
+                { "upload.wikimedia.org",   "/.wp-wm-upload" },
             },
         },
         -- Chinese
@@ -33,9 +33,9 @@ local _M = {
             host = "zh.wikiproxy.example.com",
             domain = "zh.wikipedia.org",
             maps = {
-                { "zh.m.wikipedia.org",     "/.wp-m/" },
-                { "www.wikimedia.org",      "/.wp-wm-www/" },
-                { "upload.wikimedia.org",   "/.wp-wm-upload/" },
+                { "zh.m.wikipedia.org",     "/.wp-m" },
+                { "www.wikimedia.org",      "/.wp-wm-www" },
+                { "upload.wikimedia.org",   "/.wp-wm-upload" },
             },
         },
     },
