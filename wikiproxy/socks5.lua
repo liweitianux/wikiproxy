@@ -243,7 +243,7 @@ function _M.connect(self, host, port, options)
     local sock = self.sock
     local ok, err
 
-    ok, err = sock:connect(self.host, self.port)
+    ok, err = sock:connect(self.host, self.port, options)
     if not ok then
         ngx.log(ngx.ERR, "failed to connect to proxy: host=", self.host,
                 ", port=", self.port, ": ", err)
