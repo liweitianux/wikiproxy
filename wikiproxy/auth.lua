@@ -32,8 +32,11 @@ function _M.handle()
     local key_authing = "authing:" .. client_ip .. ":" .. user_agent
     local v = xshdict:incr(key_authing, 1, 0, xconfig.auth.wait_time)
     if v and v <= xconfig.auth.retries then
+        local content = tostring(xconfig.auth.retries + 1 - v)
         ngx.status = xconfig.auth.code
-        ngx.say(tostring(xconfig.auth.retries + 1 - v))
+        ngx.header["Content-Type"] = "text/plain"
+        ngx.header["Content-Length"] = #content + 1
+        ngx.say(content)
         return
     end
 
