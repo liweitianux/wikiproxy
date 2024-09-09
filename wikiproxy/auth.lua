@@ -21,9 +21,17 @@ local _M = {}
 function _M.handle()
     -- Simple authentication to prevent crawlers and public accesses/abuses.
     --
-    local client_ip = ngx.var.remote_addr
     local user_agent = ngx.var.http_user_agent
+    if not user_agent or user_agent == "" then
+        local content = "bad request"
+        ngx.status = 400
+        ngx.header["Content-Type"] = "text/plain"
+        ngx.header["Content-Length"] = #content + 1
+        ngx.say(content)
+        return
+    end
 
+    local client_ip = ngx.var.remote_addr
     local key_authed = "authed:" .. client_ip .. ":" .. user_agent
     if xshdict:get(key_authed) then
         return
