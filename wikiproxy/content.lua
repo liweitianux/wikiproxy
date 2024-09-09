@@ -231,7 +231,10 @@ function _M.handle()
     local ct = res.headers["Content-Type"] or ""
     -- strip possible charset
     ct = ngx.re.gsub(ct, [[^\s*([\w/]+).*]], "$1", "jo")
-    if ct == "text/html" then
+    if ct == "text/html" or
+       ct == "text/javascript" or
+       ct == "text/css" -- e.g., url() in background attribute
+    then
         -- TODO: support gzip'ed content (Content-Encoding: gzip)
         res.body = map_urls(res.body, wiki, ctx)
         res.headers["Content-Length"] = #res.body
