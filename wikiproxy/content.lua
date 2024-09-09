@@ -234,6 +234,7 @@ function _M.handle()
     if ct == "text/html" then
         -- TODO: support gzip'ed content (Content-Encoding: gzip)
         res.body = map_urls(res.body, wiki, ctx)
+        res.headers["Content-Length"] = #res.body
     end
 
     -- Send response.
