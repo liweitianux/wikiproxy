@@ -27,6 +27,10 @@ end
 function _M.handle()
     -- Simple authentication to prevent crawlers and public accesses/abuses.
     --
+    local host = ngx.var.http_host
+    if not host or host == "" then
+        return exit(400, "bad request")
+    end
     local user_agent = ngx.var.http_user_agent
     if not user_agent or user_agent == "" then
         return exit(400, "bad request")
