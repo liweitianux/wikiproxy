@@ -121,8 +121,8 @@ ngx_int_t ngx_inet6_addr(u_char *p, size_t len, u_char *addr);
 
 local inaddr_none = ffi.cast("in_addr_t", 0xFFFFFFFF)
 local inet6_ibufsize = 64
-local inet6_ibuffer = ffi.new(ffi.typeof("u_char[?]"), inet6_ibufsize)
-local inet6_obuffer = ffi.new(ffi.typeof("u_char[?]"), 16)
+local inet6_ibuffer = ffi.new("u_char[?]", inet6_ibufsize)
+local inet6_obuffer = ffi.new("u_char[?]", 16)
 
 -- Convert IPv4 address from text format to binary format.
 function _M.inet_addr(ip4)
@@ -171,11 +171,11 @@ do
 
     addr = _M.inet_addr("127.0.0.1")
     assert(addr == "\127\0\0\1")
-    ngx.log(ngx.INFO, "inet_addr() test passed")
+    ngx.log(ngx.DEBUG, "inet_addr() test passed")
 
     addr = _M.inet6_addr("::1")
     assert(addr == "\0\0\0\0".."\0\0\0\0".."\0\0\0\0".."\0\0\0\1")
-    ngx.log(ngx.INFO, "inet6_addr() test passed")
+    ngx.log(ngx.DEBUG, "inet6_addr() test passed")
 end
 
 ------------------------------------------------------------------------
