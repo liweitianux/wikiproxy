@@ -227,28 +227,29 @@ function _M.handle()
         res.headers["Location"] = map_urls(location, wiki, ctx)
     end
 
-    local gzipped = (res.headers["Content-Encoding"] == "gzip")
-
-    -- Transform the URLs in the body.
-    local ct = res.headers["Content-Type"] or ""
-    -- strip possible charset
-    ct = ngx.re.gsub(ct, [[^\s*([\w/]+).*]], "$1", "jo")
-    if ct == "text/html" or
-       ct == "text/javascript" or
-       ct == "text/css" -- e.g., url() in background attribute
-    then
-        if gzipped then
-            res.body, err = xgzip.decompress(res.body)
-            if err then
-                ngx.status = ngx.HTTP_BAD_REQUEST
-                return ngx.say("400 bad request: cannot decompress request")
+    if res.body and #res.body > 0 then
+        -- Transform the URLs in the body.
+        local gzipped = (res.headers["Content-Encoding"] == "gzip")
+        local ct = res.headers["Content-Type"] or ""
+        -- strip possible charset
+        ct = ngx.re.gsub(ct, [[^\s*([\w/]+).*]], "$1", "jo")
+        if ct == "text/html" or
+           ct == "text/javascript" or
+           ct == "text/css" -- e.g., url() in background attribute
+        then
+            if gzipped then
+                res.body, err = xgzip.decompress(res.body)
+                if err then
+                    ngx.status = ngx.HTTP_BAD_REQUEST
+                    return ngx.say("400 bad request: gzip decompression")
+                end
             end
+            res.body = map_urls(res.body, wiki, ctx)
+            if gzipped then
+                res.body = xgzip.compress(res.body)
+            end
+            res.headers["Content-Length"] = #res.body
         end
-        res.body = map_urls(res.body, wiki, ctx)
-        if gzipped then
-            res.body = xgzip.compress(res.body)
-        end
-        res.headers["Content-Length"] = #res.body
     end
 
     -- Send response.
