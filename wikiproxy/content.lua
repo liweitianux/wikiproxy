@@ -18,6 +18,7 @@ local ngx_re = ngx.re
 local ngx_req = ngx.req
 
 local xconfig = require("wikiproxy.config")
+local xgzip = require("wikiproxy.gzip")
 local xhttp = require("wikiproxy.http")
 
 ------------------------------------------------------------------------
@@ -160,8 +161,7 @@ local function make_request(wiki)
         if k_lc == "host" then
             headers[k] = domain
         elseif k_lc == "accept-encoding" then
-            headers[k] = nil -- XXX
-            --headers[k] = "gzip" -- support gzip only
+            headers[k] = "gzip" -- support gzip only
         end
     end
 
@@ -227,7 +227,9 @@ function _M.handle()
         res.headers["Location"] = map_urls(location, wiki, ctx)
     end
 
-    -- Transform the URLs in the page.
+    local gzipped = (res.headers["Content-Encoding"] == "gzip")
+
+    -- Transform the URLs in the body.
     local ct = res.headers["Content-Type"] or ""
     -- strip possible charset
     ct = ngx.re.gsub(ct, [[^\s*([\w/]+).*]], "$1", "jo")
@@ -235,8 +237,17 @@ function _M.handle()
        ct == "text/javascript" or
        ct == "text/css" -- e.g., url() in background attribute
     then
-        -- TODO: support gzip'ed content (Content-Encoding: gzip)
+        if gzipped then
+            res.body, err = xgzip.decompress(res.body)
+            if err then
+                ngx.status = ngx.HTTP_BAD_REQUEST
+                return ngx.say("400 bad request: cannot decompress request")
+            end
+        end
         res.body = map_urls(res.body, wiki, ctx)
+        if gzipped then
+            res.body = xgzip.compress(res.body)
+        end
         res.headers["Content-Length"] = #res.body
     end
 
