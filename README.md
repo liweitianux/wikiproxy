@@ -69,7 +69,12 @@ OS: Debian Linux (bookworm/12)
           -key etc/ssl_ecdsa.key -out etc/ssl_ecdsa.crt
     ```
 
-4. Start:
+4. Edit `wikiproxy/config.lua` accordingly, including the `wikis.host`
+   domains, `proxy` SOCKS5 proxy.
+
+5. If the SOCKS5 proxy is configured, start the proxy service.
+
+6. Finally start the OpenResty:
 
     ```
     $ mkdir /tmp/wikiproxy
