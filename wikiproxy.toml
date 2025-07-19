@@ -1,0 +1,15 @@
+# Logger level: debug, info, warn, error
+log_level = "debug"
+
+# Listen address (host:port)
+listen = "127.0.0.1:2012"
+
+# The proxy used for accessing Wikipedia
+proxy = "socks5h://127.0.0.1:1080"
+
+# The domains used for proxying Wikipedia
+[domains]
+# Domain to proxy the English site: en.wikipedia.org
+english = "en.wikiproxy.org"
+# Domain to proxy the Chinese site: zh.wikipedia.org
+chinese = "zh.wikiproxy.org"
