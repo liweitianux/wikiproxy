@@ -72,10 +72,19 @@ func main() {
 		slog.Warn("unknown log level", "level", config.LogLevel)
 	}
 
-	// TODO
+	wikiproxy, err := NewWikiProxy(config.Proxy)
+	if err != nil {
+		panic(err)
+	}
+	if domain := config.Domains.English; domain != "" {
+		wikiproxy.AddDomain("english", domain)
+	}
+	if domain := config.Domains.Chinese; domain != "" {
+		wikiproxy.AddDomain("chinese", domain)
+	}
 
 	slog.Info("starting server", "url", "http://"+config.Listen)
-	err = http.ListenAndServe(config.Listen, nil)
+	err = http.ListenAndServe(config.Listen, wikiproxy)
 	if err != nil {
 		panic(err)
 	}
