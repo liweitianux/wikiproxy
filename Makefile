@@ -1,0 +1,6 @@
+.PHONY: all
+all:
+	go mod tidy
+	go vet ./...
+	env CGO_ENABLED=0 go build -v -trimpath
+	go test ./...
