@@ -6,13 +6,21 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"slices"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -70,6 +78,8 @@ func NewWikiProxy(proxy string) (*WikiProxy, error) {
 			Rewrite: func(r *httputil.ProxyRequest) {
 				r.SetURL(tURL)
 				slog.Debug("set target", "url", r.Out.URL)
+				// modifyResponse() always supports gzip.
+				r.Out.Header.Set("Accept-Encoding", "gzip")
 			},
 			ModifyResponse: wp.modifyResponse,
 			Transport:      transport,
@@ -97,6 +107,20 @@ func (wp *WikiProxy) AddDomain(language string, domain string) {
 	wp.domains[domain] = target
 	slog.Info("added proxying domain", "domain", domain, "language", language,
 		"target", target)
+}
+
+// Information about the original request that needed in ModifyResponse().
+// Passed through the request as a context value.
+type wpRequestInfo struct {
+	// The main domain of the Wikipedia site.
+	// e.g., en.wikipedia.org
+	target string
+	// The request host; prefer "X-Forwarded-Host" if present.
+	// e.g., en.wikiproxy.org:2012
+	host string
+	// The request scheme; prefer "X-Forwarded-Proto" if present.
+	// e.g., https
+	scheme string
 }
 
 func (wp *WikiProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +158,26 @@ func (wp *WikiProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reqInfo := &wpRequestInfo{
+		target: target,
+		host:   r.Header.Get("X-Forwarded-Host"),
+		scheme: r.Header.Get("X-Forwarded-Proto"),
+	}
+	if reqInfo.host == "" {
+		reqInfo.host = r.Host
+	}
+	if reqInfo.scheme == "" {
+		if r.TLS != nil {
+			reqInfo.scheme = "https"
+		} else {
+			reqInfo.scheme = "http"
+		}
+	}
+	slog.Debug("extra request info", "value", reqInfo)
+
+	ctx := context.WithValue(r.Context(), "wpRequestInfo", reqInfo)
+	r = r.WithContext(ctx)
+
 	handler.ServeHTTP(w, r)
 }
 
@@ -162,6 +206,146 @@ func (wp *WikiProxy) getTarget(host string) string {
 }
 
 func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
-	// TODO
+	ctx := resp.Request.Context()
+	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
+
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		slog.Error("invalid Content-Type", "value", contentType, "error", err)
+		return errors.New("invalid Content-Type")
+	}
+
+	// slog.Debug("origin response", "response", resp, "request", resp.Request)
+
+	// text/css: deal with url() in background attribute, etc.
+	if mediaType == "text/html" ||
+		mediaType == "text/javascript" ||
+		mediaType == "text/css" {
+
+		encoding := resp.Header.Get("Content-Encoding")
+		defer resp.Body.Close()
+
+		var body []byte
+		if encoding == "gzip" {
+			gr, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				slog.Error("failed to create gzip reader", "error", err,
+					"response", resp, "request", resp.Request)
+				return errors.New("gzip body read failure")
+			}
+			body, err = io.ReadAll(gr)
+			gr.Close()
+			if err != nil {
+				slog.Error("failed to read gzip body", "error", err,
+					"response", resp, "request", resp.Request)
+				return errors.New("gzip body read failure")
+			}
+		} else {
+			// Assume plain text, as we enforced in Rewrite().
+			body, err = io.ReadAll(resp.Body)
+			if err != nil {
+				slog.Error("failed to read body", "error", err,
+					"response", resp, "request", resp.Request)
+				return errors.New("body read failure")
+			}
+		}
+
+		newBody := wp.translateURLs(body, reqInfo)
+		slog.Debug("translated body", "media_type", mediaType,
+			"old_length", len(body), "new_length", len(newBody))
+
+		resp.Body = io.NopCloser(bytes.NewBuffer(newBody))
+		resp.Header.Set("Content-Length", strconv.Itoa(len(newBody)))
+		resp.Header.Del("Content-Encoding")
+
+	}
+
+	// TODO: Deal with headers: Set-Cookie, Referer, Origin, Refresh, ...
+	if location := resp.Header.Get("Location"); location != "" {
+		newLoc := wp.translateURLs([]byte(location), reqInfo)
+		resp.Header.Set("Location", string(newLoc))
+	}
+	if refresh := resp.Header.Get("Refresh"); refresh != "" {
+		newRefresh := wp.translateURLs([]byte(refresh), reqInfo)
+		resp.Header.Set("Refresh", string(newRefresh))
+	}
+
+	// Delete some unwanted headers.
+	resp.Header.Del("Strict-Transport-Security")
+	resp.Header.Del("Report-To")
+	resp.Header.Del("Reporting-Endpoints")
+	resp.Header.Del("Nel") // Network Error Logging
+	resp.Header.Del("X-Client-Ip")
+	resp.Header.Del("Transfer-Encoding") // prevent from chunking
+
 	return nil
+}
+
+// Regex to match Wikipedia URLs in order to perform translation.
+//
+// Domains:
+// - wikipedia.org
+// - *.wikipedia.org
+// - wikimedia.org
+// - *.wikimedia.org
+//
+// NOTE: Go's regex doesn't support lookahead and lookbehind matches, so use
+// the <prefix> group to workaround it.
+// NOTE: JSON script may escape '/' as '\/';
+// e.g., {"url": "https:\/\/www.wikimedia.org\/static\/...",...}
+var reWikiURL = regexp.MustCompile(`(?P<prefix>^|[^\w:/])` +
+	`(?P<scheme>\bhttps?:)?` +
+	`(?P<slashes>\\?/\\?/)` +
+	`(?P<domain>(?:\w+\.)*(?:wikipedia\.org|wikimedia\.org))\b`)
+
+func (wp *WikiProxy) translateURLs(input []byte, reqInfo *wpRequestInfo) []byte {
+	if len(input) == 0 {
+		return input
+	}
+
+	re := reWikiURL
+	giPrefix := re.SubexpIndex("prefix")
+	giScheme := re.SubexpIndex("scheme")
+	giSlashes := re.SubexpIndex("slashes")
+	giDomain := re.SubexpIndex("domain")
+
+	output := bytes.Buffer{}
+	last := 0
+
+	inputLC := bytes.ToLower(input) // ignore case in regex matching
+	for _, match := range re.FindAllSubmatchIndex(inputLC, -1) {
+		output.Write(input[last:match[0]])
+		last = match[1]
+
+		slashes := string(inputLC[match[giSlashes*2]:match[giSlashes*2+1]])
+		domain := string(inputLC[match[giDomain*2]:match[giDomain*2+1]])
+		scheme := ""
+		if match[giScheme*2] >= 0 {
+			// The <scheme> group may not match ('?' repetition).
+			scheme = string(inputLC[match[giScheme*2]:match[giScheme*2+1]])
+		}
+
+		repl := bytes.Buffer{}
+		repl.Write(input[match[giPrefix*2]:match[giPrefix*2+1]])
+		if scheme != "" {
+			repl.WriteString(reqInfo.scheme + ":")
+		}
+		repl.WriteString(slashes)
+		repl.WriteString(reqInfo.host)
+		if domain != reqInfo.target {
+			tPrefix := wp.transPrefix
+			if slashes != "//" {
+				tPrefix = strings.ReplaceAll(tPrefix, "/", `\/`)
+			}
+			repl.WriteString(tPrefix)
+			repl.WriteString(domain)
+		}
+		output.Write(repl.Bytes())
+
+		// slog.Debug("translated", "from", string(input[match[0]:match[1]]), "to", repl.String())
+	}
+
+	output.Write(input[last:])
+	return output.Bytes()
 }
