@@ -18,35 +18,17 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"slices"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-// List of domains used by Wikipedia.
-var wikiDomains = []string{
-	/* main domains */
-	"en.wikipedia.org",
-	"zh.wikipedia.org",
-	/* mobile domains */
-	"en.m.wikipedia.org",
-	"zh.m.wikipedia.org",
-	/* assets domains */
-	"wikimedia.org",
-	"commons.wikimedia.org",
-	"login.wikimedia.org",
-	"meta.wikimedia.org",
-	"upload.wikimedia.org",
-	"www.wikimedia.org",
-}
-
 type WikiProxy struct {
 	// The proxy<->target domains.
 	// The proxy domain may be wildcard that begins with a '*'.
 	domains map[string]string
-	// Per-domain proxy handlers.
-	handlers map[string]*httputil.ReverseProxy
+	// The proxy handler to visit Wikipedia.
+	handler *httputil.ReverseProxy
 	// path prefix used in translating domains
 	transPrefix string
 }
@@ -66,24 +48,12 @@ func NewWikiProxy(proxy string) (*WikiProxy, error) {
 
 	wp := WikiProxy{
 		domains:     make(map[string]string),
-		handlers:    make(map[string]*httputil.ReverseProxy),
 		transPrefix: "/_wp_/",
 	}
-	for _, domain := range wikiDomains {
-		tURL := &url.URL{
-			Scheme: "https",
-			Host:   domain,
-		}
-		wp.handlers[domain] = &httputil.ReverseProxy{
-			Rewrite: func(r *httputil.ProxyRequest) {
-				r.SetURL(tURL)
-				slog.Debug("set target", "url", r.Out.URL)
-				// modifyResponse() always supports gzip.
-				r.Out.Header.Set("Accept-Encoding", "gzip")
-			},
-			ModifyResponse: wp.modifyResponse,
-			Transport:      transport,
-		}
+	wp.handler = &httputil.ReverseProxy{
+		Rewrite:        wp.rewrite,
+		ModifyResponse: wp.modifyResponse,
+		Transport:      transport,
 	}
 
 	return &wp, nil
@@ -91,22 +61,19 @@ func NewWikiProxy(proxy string) (*WikiProxy, error) {
 
 // Add <domain> for proxying to the Wikipedia site.
 func (wp *WikiProxy) AddDomain(language string, domain string) {
-	var target string
+	var site string
 	switch language {
 	case "en", "english", "English":
-		target = "en.wikipedia.org"
+		site = "en.wikipedia.org"
 	case "zh", "chinese", "Chinese":
-		target = "zh.wikipedia.org"
+		site = "zh.wikipedia.org"
 	default:
 		panic(fmt.Sprintf("unsupported language %s", language))
 	}
-	if slices.Index(wikiDomains, target) < 0 {
-		panic(fmt.Sprintf("wikiDomains missing target: %s", target))
-	}
 
-	wp.domains[domain] = target
+	wp.domains[domain] = site
 	slog.Info("added proxying domain", "domain", domain, "language", language,
-		"target", target)
+		"site", site)
 }
 
 // Information about the original request that needed in ModifyResponse().
@@ -114,7 +81,9 @@ func (wp *WikiProxy) AddDomain(language string, domain string) {
 type wpRequestInfo struct {
 	// The main domain of the Wikipedia site.
 	// e.g., en.wikipedia.org
-	target string
+	site string
+	// The target URL to visit.
+	target *url.URL
 	// The request host; prefer "X-Forwarded-Host" if present.
 	// e.g., en.wikiproxy.org:2012
 	host string
@@ -126,39 +95,23 @@ type wpRequestInfo struct {
 func (wp *WikiProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("request", "host", r.Host, "url", r.URL, "header", r.Header,
 		"tls", r.TLS != nil)
-	target := wp.getTarget(r.Host)
-	if target == "" {
+	site := wp.getSite(r.Host)
+	if site == "" {
 		slog.Info("service not found", "host", r.Host)
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
-	path := r.URL.Path
-	if strings.HasPrefix(path, wp.transPrefix) {
-		// Extract the target domain from the translated path:
-		// "/<transPrefix>/<target>/<origPath>"
-		path = strings.TrimPrefix(path, wp.transPrefix)
-		t, p, found := strings.Cut(path, "/")
-		if !found {
-			slog.Info("invalid translated path", "path", path)
-			http.Error(w, "invalid path", http.StatusBadRequest)
-			return
-		}
-		target = t
-		path = p
-	}
-	slog.Debug("incoming request", "req_path", r.URL.Path,
-		"target", target, "target_path", path)
-	r.URL.Path = path
-
-	handler := wp.handlers[target]
-	if handler == nil {
-		slog.Info("proxy handler not found", "target", target)
-		http.Error(w, "not implemented", http.StatusNotImplemented)
+	target := wp.getTarget(r.URL, site)
+	if target == nil {
+		slog.Info("invalid request", "url", r.URL)
+		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	slog.Debug("request", "site", site, "target_url", target)
 
 	reqInfo := &wpRequestInfo{
+		site:   site,
 		target: target,
 		host:   r.Header.Get("X-Forwarded-Host"),
 		scheme: r.Header.Get("X-Forwarded-Proto"),
@@ -178,10 +131,12 @@ func (wp *WikiProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithValue(r.Context(), "wpRequestInfo", reqInfo)
 	r = r.WithContext(ctx)
 
-	handler.ServeHTTP(w, r)
+	wp.handler.ServeHTTP(w, r)
 }
 
-func (wp *WikiProxy) getTarget(host string) string {
+// Get the main domain of the target Wikipedia site.
+// e.g., en.wikipedia.org
+func (wp *WikiProxy) getSite(host string) string {
 	// The <host> directly comes from the 'Host' request header, so need
 	// to normalize it.
 	domain := strings.ToLower(host)
@@ -190,21 +145,85 @@ func (wp *WikiProxy) getTarget(host string) string {
 	}
 	slog.Debug("incoming request", "host", host, "domain", domain)
 
-	if target, ok := wp.domains[domain]; ok {
-		return target
+	if site, ok := wp.domains[domain]; ok {
+		return site
 	}
 
 	// Fallback to check wildcard domains.
-	for pattern, target := range wp.domains {
+	for pattern, site := range wp.domains {
 		if strings.HasPrefix(pattern, "*.") &&
 			strings.HasSuffix(domain, pattern[1:]) {
-			return target
+			return site
 		}
 	}
 
 	return ""
 }
 
+func (wp *WikiProxy) getTarget(reqURL *url.URL, site string) *url.URL {
+	host := site
+	path := reqURL.Path
+	if strings.HasPrefix(path, wp.transPrefix) {
+		// Extract the target domain from the translated path:
+		// "/<transPrefix>/<target>/<origPath>"
+		path = strings.TrimPrefix(path, wp.transPrefix)
+		if i := strings.Index(path, "/"); i > 0 {
+			host = path[:i]
+			path = path[i:]
+			slog.Debug("extracted target", "host", host, "path", path)
+		} else {
+			slog.Debug("invalid translated path", "path", path)
+			return nil
+		}
+	}
+
+	domains := []string{
+		"wikipedia.org",
+		"*.wikipedia.org",
+		"wikimedia.org",
+		"*.wikimedia.org",
+	}
+	valid := false
+	for _, d := range domains {
+		if strings.HasPrefix(d, "*.") {
+			if strings.HasSuffix(host, d[1:]) {
+				valid = true
+				break
+			}
+		} else {
+			if d == host {
+				valid = true
+				break
+			}
+		}
+	}
+	if !valid {
+		slog.Debug("invalid host", "host", host)
+		return nil
+	}
+
+	return &url.URL{
+		Scheme:   "https",
+		Host:     host,
+		Path:     path,
+		RawQuery: reqURL.RawQuery,
+	}
+}
+
+// Callback of ReverseProxy to rewrite the request.
+func (wp *WikiProxy) rewrite(r *httputil.ProxyRequest) {
+	ctx := r.In.Context()
+	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
+
+	r.Out.URL = reqInfo.target
+	r.Out.Host = "" // so will use r.Out.URL.Host
+	slog.Debug("set target", "url", r.Out.URL)
+
+	// modifyResponse() always supports gzip.
+	r.Out.Header.Set("Accept-Encoding", "gzip")
+}
+
+// Callback of ReverseProxy to modify the response.
 func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 	ctx := resp.Request.Context()
 	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
@@ -333,7 +352,7 @@ func (wp *WikiProxy) translateURLs(input []byte, reqInfo *wpRequestInfo) []byte 
 		}
 		repl.WriteString(slashes)
 		repl.WriteString(reqInfo.host)
-		if domain != reqInfo.target {
+		if domain != reqInfo.site {
 			tPrefix := wp.transPrefix
 			if slashes != "//" {
 				tPrefix = strings.ReplaceAll(tPrefix, "/", `\/`)
