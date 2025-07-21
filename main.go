@@ -83,8 +83,10 @@ func main() {
 		wikiproxy.AddDomain("chinese", domain)
 	}
 
+	handler := GzipMiddleware(wikiproxy)
+
 	slog.Info("starting server", "url", "http://"+config.Listen)
-	err = http.ListenAndServe(config.Listen, wikiproxy)
+	err = http.ListenAndServe(config.Listen, handler)
 	if err != nil {
 		panic(err)
 	}
