@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Implement middlewares:
+// - panic recovery
 // - gzip compression
 //
 
@@ -8,9 +9,24 @@ package main
 
 import (
 	"compress/gzip"
+	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
 )
+
+func RecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				slog.Error("***PANIC***", "error", err, "stack", debug.Stack())
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
 
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
