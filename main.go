@@ -30,6 +30,17 @@ type Config struct {
 		// Domain to proxy the Chinese site: zh.wikipedia.org
 		Chinese string `toml:"chinese"`
 	} `toml:"domains"`
+	// Simple authenticator to protect from crawling/abusing
+	Authenticator struct {
+		// Secret to sign the cookie.
+		Secret string `toml:"secret"`
+		// Number of retries to pass the authentication.
+		Retries int `toml:"retries"`
+		// Time (seconds) to wait for a client to finish authenticating.
+		WaitTime int `toml:"wait_time"`
+		// Cache time (seconds) of a successful authentication.
+		TTL int `toml:"ttl"`
+	}
 }
 
 func main() {
@@ -85,6 +96,14 @@ func main() {
 
 	handler := RecoveryMiddleware(wikiproxy)
 	handler = GzipMiddleware(handler)
+
+	auth := Authenticator{
+		Secret:   []byte(config.Authenticator.Secret),
+		Retries:  config.Authenticator.Retries,
+		WaitTime: config.Authenticator.WaitTime,
+		TTL:      config.Authenticator.TTL,
+	}
+	handler = auth.Middleware(handler)
 
 	slog.Info("starting server", "url", "http://"+config.Listen)
 	err = http.ListenAndServe(config.Listen, handler)

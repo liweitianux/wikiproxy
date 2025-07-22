@@ -13,3 +13,16 @@ proxy = "socks5h://127.0.0.1:1080"
 english = "en.wikiproxy.org"
 # Domain to proxy the Chinese site: zh.wikipedia.org
 chinese = "zh.wikiproxy.org"
+
+# Simple authenticator to protect from crawling/abusing
+[authenticator]
+# Secret to sign the cookie.
+# e.g., openssl rand -base64 33
+# If unspecified, a randomly generated one is used.
+secret = ""
+# Number of retries to pass the authentication.
+retries = 6
+# Time (seconds) to wait for a client to finish authenticating.
+wait_time = 30
+# Cache time (seconds) of a successful authentication.
+ttl = 3600
