@@ -65,30 +65,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	if !w.headersWritten {
 		w.headersWritten = true
 
-		contentType := w.Header().Get("Content-Type")
-		if contentType == "" {
-			contentType = http.DetectContentType(b)
-			w.Header().Set("Content-Type", contentType)
-		}
-
-		compressibleMIMEs := []string{
-			"text/",
-			"application/json",
-			"application/javascript",
-			"application/xml",
-			"application/rss+xml",
-			"application/atom+xml",
-			"image/svg+xml",
-		}
-		shouldCompress := false
-		for _, prefix := range compressibleMIMEs {
-			if strings.HasPrefix(contentType, prefix) {
-				shouldCompress = true
-				break
-			}
-		}
-
-		if shouldCompress {
+		if w.shouldCompress(b) {
 			w.Header().Set("Content-Encoding", "gzip")
 			w.Header().Del("Content-Length") // gzip chunking
 			w.gzipWriter = gzip.NewWriter(w.ResponseWriter)
@@ -103,4 +80,37 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 		return w.gzipWriter.Write(b)
 	}
 	return w.ResponseWriter.Write(b)
+}
+
+func (w *gzipResponseWriter) shouldCompress(b []byte) bool {
+	// Skip gzip if already encoded.
+	encoding := w.Header().Get("Content-Encoding")
+	if encoding != "" && encoding != "identity" {
+		return false
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType == "" {
+		contentType = http.DetectContentType(b)
+		w.Header().Set("Content-Type", contentType)
+		slog.Debug("detected content-type", "content_type", contentType)
+	}
+
+	compressibleMIMEs := []string{
+		"text/",
+		"application/json",
+		"application/javascript",
+		"application/xml",
+		"application/rss+xml",
+		"application/atom+xml",
+		"image/svg+xml",
+	}
+	for _, prefix := range compressibleMIMEs {
+		if strings.HasPrefix(contentType, prefix) {
+			slog.Debug("gzip response", "content_type", contentType)
+			return true
+		}
+	}
+
+	return false
 }
