@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 //
+// Copyright (c) 2025 Aaron LI
+//
 // Implement middlewares:
 // - panic recovery
 // - gzip compression
