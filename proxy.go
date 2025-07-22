@@ -219,8 +219,10 @@ func (wp *WikiProxy) rewrite(r *httputil.ProxyRequest) {
 	r.Out.Host = "" // so will use r.Out.URL.Host
 	slog.Debug("set target", "url", r.Out.URL)
 
-	// modifyResponse() always supports gzip.
-	r.Out.Header.Set("Accept-Encoding", "gzip")
+	if strings.Contains(r.In.Header.Get("Accept-Encoding"), "gzip") {
+		// modifyResponse() only supports gzip.
+		r.Out.Header.Set("Accept-Encoding", "gzip")
+	}
 }
 
 // Callback of ReverseProxy to modify the response.
