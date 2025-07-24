@@ -34,6 +34,8 @@ type Config struct {
 	} `toml:"domains"`
 	// Simple authenticator to protect from crawling/abusing
 	Authenticator struct {
+		// Whether enable this?
+		Enabled bool `toml:"enabled"`
 		// Secret to sign the cookie.
 		Secret string `toml:"secret"`
 		// Number of retries to pass the authentication.
@@ -99,13 +101,18 @@ func main() {
 	handler := RecoveryMiddleware(wikiproxy)
 	handler = GzipMiddleware(handler)
 
-	auth := Authenticator{
-		Secret:   []byte(config.Authenticator.Secret),
-		Retries:  config.Authenticator.Retries,
-		WaitTime: config.Authenticator.WaitTime,
-		TTL:      config.Authenticator.TTL,
+	if config.Authenticator.Enabled {
+		slog.Info("authenticator enabled", "config", config.Authenticator)
+		auth := Authenticator{
+			Secret:   []byte(config.Authenticator.Secret),
+			Retries:  config.Authenticator.Retries,
+			WaitTime: config.Authenticator.WaitTime,
+			TTL:      config.Authenticator.TTL,
+		}
+		handler = auth.Middleware(handler)
+	} else {
+		slog.Info("authenticator disabled")
 	}
-	handler = auth.Middleware(handler)
 
 	slog.Info("starting server", "url", "http://"+config.Listen)
 	err = http.ListenAndServe(config.Listen, handler)

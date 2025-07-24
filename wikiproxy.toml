@@ -16,6 +16,8 @@ chinese = "zh.wikiproxy.org"
 
 # Simple authenticator to protect from crawling/abusing
 [authenticator]
+# Whether enable this?
+enabled = true
 # Secret to sign the cookie.
 # e.g., openssl rand -base64 33
 # If unspecified, a randomly generated one is used.
