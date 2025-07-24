@@ -336,3 +336,80 @@ func TestReWikiURL(t *testing.T) {
 		})
 	}
 }
+
+func TestTranslateURLs(t *testing.T) {
+	wp := &WikiProxy{transPrefix: "/_wp_/"}
+	info := &wpRequestInfo{
+		site:   "en.wikipedia.org",
+		host:   "en.wikiproxy.org:2012",
+		scheme: "http",
+	}
+
+	testcases := []struct {
+		name   string
+		input  string
+		output string
+	}{
+		{
+			name:   "empty",
+			input:  "",
+			output: "",
+		},
+		{
+			name:   "nomatch",
+			input:  "A simple Wikipedia proxy in Go.",
+			output: "A simple Wikipedia proxy in Go.",
+		},
+		{
+			name:   "site1",
+			input:  "https://en.wikipedia.org",
+			output: "http://en.wikiproxy.org:2012",
+		},
+		{
+			name:   "location1",
+			input:  "Location: https://en.wikipedia.org/wiki/Main_Page",
+			output: "Location: http://en.wikiproxy.org:2012/wiki/Main_Page",
+		},
+		{
+			name:   "header1",
+			input:  `<link rel="alternate" media="only screen and (max-width: 640px)" href="//en.m.wikipedia.org/wiki/Main_Page">`,
+			output: `<link rel="alternate" media="only screen and (max-width: 640px)" href="//en.wikiproxy.org:2012/_wp_/en.m.wikipedia.org/wiki/Main_Page">`,
+		},
+		{
+			name:   "header2",
+			input:  `<link rel="dns-prefetch" href="//meta.wikimedia.org" />`,
+			output: `<link rel="dns-prefetch" href="//en.wikiproxy.org:2012/_wp_/meta.wikimedia.org" />`,
+		},
+		{
+			name:   "header3",
+			input:  `<link rel="preconnect" href="//upload.wikimedia.org">`,
+			output: `<link rel="preconnect" href="//en.wikiproxy.org:2012/_wp_/upload.wikimedia.org">`,
+		},
+		{
+			name:   "content1",
+			input:  `<li id="pt-sitesupport-2" class="user-links-collapsible-item mw-list-item user-links-collapsible-item"><a data-mw="interface" href="https://donate.wikimedia.org/?wmf_source=donate&amp;wmf_medium=sidebar&amp;wmf_campaign=en.wikipedia.org&amp;uselang=en" class=""><span>Donate</span></a>`,
+			output: `<li id="pt-sitesupport-2" class="user-links-collapsible-item mw-list-item user-links-collapsible-item"><a data-mw="interface" href="http://en.wikiproxy.org:2012/_wp_/donate.wikimedia.org/?wmf_source=donate&amp;wmf_medium=sidebar&amp;wmf_campaign=en.wikipedia.org&amp;uselang=en" class=""><span>Donate</span></a>`,
+		},
+		{
+			name:   "multi1",
+			input:  `<div><span typeof="mw:File"><a href="https://commons.wikimedia.org/wiki/" title="Commons"><img alt="Commons logo" src="//upload.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/40px-Commons-logo.svg.png" decoding="async" width="31" height="42" class="mw-file-element" srcset="//upload.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/60px-Commons-logo.svg.png 1.5x, //upload.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/120px-Commons-logo.svg.png 2x" data-file-width="1024" data-file-height="1376"></a></span></div>`,
+			output: `<div><span typeof="mw:File"><a href="http://en.wikiproxy.org:2012/_wp_/commons.wikimedia.org/wiki/" title="Commons"><img alt="Commons logo" src="//en.wikiproxy.org:2012/_wp_/upload.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/40px-Commons-logo.svg.png" decoding="async" width="31" height="42" class="mw-file-element" srcset="//en.wikiproxy.org:2012/_wp_/upload.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/60px-Commons-logo.svg.png 1.5x, //en.wikiproxy.org:2012/_wp_/upload.wikimedia.org/wikipedia/en/thumb/4/4a/Commons-logo.svg/120px-Commons-logo.svg.png 2x" data-file-width="1024" data-file-height="1376"></a></span></div>`,
+		},
+		{
+			name:   "json1",
+			input:  `<script type="application/ld+json">{"@context":"https:\/\/schema.org","@type":"Article","name":"Main Page","url":"https:\/\/en.wikipedia.org\/wiki\/Main_Page","sameAs":"http:\/\/www.wikidata.org\/entity\/Q5296","mainEntity":"http:\/\/www.wikidata.org\/entity\/Q5296","author":{"@type":"Organization","name":"Contributors to Wikimedia projects"},"publisher":{"@type":"Organization","name":"Wikimedia Foundation, Inc.","logo":{"@type":"ImageObject","url":"https:\/\/www.wikimedia.org\/static\/images\/wmf-hor-googpub.png"}},"datePublished":"2002-01-26T15:28:12Z","dateModified":"2025-07-05T04:58:10Z","image":"https:\/\/upload.wikimedia.org\/wikipedia\/commons\/1\/16\/Great_Wilbraham_site_map.png","headline":"Wikimedia project page"}</script>`,
+			output: `<script type="application/ld+json">{"@context":"https:\/\/schema.org","@type":"Article","name":"Main Page","url":"http:\/\/en.wikiproxy.org:2012\/wiki\/Main_Page","sameAs":"http:\/\/www.wikidata.org\/entity\/Q5296","mainEntity":"http:\/\/www.wikidata.org\/entity\/Q5296","author":{"@type":"Organization","name":"Contributors to Wikimedia projects"},"publisher":{"@type":"Organization","name":"Wikimedia Foundation, Inc.","logo":{"@type":"ImageObject","url":"http:\/\/en.wikiproxy.org:2012\/_wp_\/www.wikimedia.org\/static\/images\/wmf-hor-googpub.png"}},"datePublished":"2002-01-26T15:28:12Z","dateModified":"2025-07-05T04:58:10Z","image":"http:\/\/en.wikiproxy.org:2012\/_wp_\/upload.wikimedia.org\/wikipedia\/commons\/1\/16\/Great_Wilbraham_site_map.png","headline":"Wikimedia project page"}</script>`,
+		},
+	}
+
+	for _, tc := range testcases {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			output := wp.translateURLs([]byte(tc.input), info)
+			if string(output) != tc.output {
+				t.Errorf("wrong output: %q\nexpected: %q",
+					string(output), tc.output)
+			}
+		})
+	}
+}
