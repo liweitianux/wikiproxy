@@ -40,8 +40,14 @@ func GzipMiddleware(next http.Handler) http.Handler {
 		gzrw := &gzipResponseWriter{
 			ResponseWriter: w,
 			gzipWriter:     nil, // lazily initialized
+			statusCode:     http.StatusOK,
 		}
 		defer func() {
+			// Ensure headers are written to correctly pass
+			// the status code.
+			if !gzrw.headersWritten {
+				gzrw.Write(nil)
+			}
 			if gzrw.gzipWriter != nil {
 				gzrw.gzipWriter.Close()
 			}
@@ -85,6 +91,10 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 }
 
 func (w *gzipResponseWriter) shouldCompress(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+
 	// Skip gzip if already encoded.
 	encoding := w.Header().Get("Content-Encoding")
 	if encoding != "" && encoding != "identity" {
