@@ -39,19 +39,9 @@ func GzipMiddleware(next http.Handler) http.Handler {
 
 		gzrw := &gzipResponseWriter{
 			ResponseWriter: w,
-			gzipWriter:     nil, // lazily initialized
 			statusCode:     http.StatusOK,
 		}
-		defer func() {
-			// Ensure headers are written to correctly pass
-			// the status code.
-			if !gzrw.headersWritten {
-				gzrw.Write(nil)
-			}
-			if gzrw.gzipWriter != nil {
-				gzrw.gzipWriter.Close()
-			}
-		}()
+		defer gzrw.Close()
 
 		next.ServeHTTP(gzrw, r)
 	})
@@ -71,17 +61,14 @@ func (w *gzipResponseWriter) WriteHeader(code int) {
 
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	if !w.headersWritten {
-		w.headersWritten = true
-
 		if w.shouldCompress(b) {
 			w.Header().Set("Content-Encoding", "gzip")
 			w.Header().Del("Content-Length") // gzip chunking
 			w.gzipWriter = gzip.NewWriter(w.ResponseWriter)
 		}
 
-		if w.statusCode != 0 {
-			w.ResponseWriter.WriteHeader(w.statusCode)
-		}
+		w.ResponseWriter.WriteHeader(w.statusCode)
+		w.headersWritten = true
 	}
 
 	if w.gzipWriter != nil {
@@ -101,7 +88,7 @@ func (w *gzipResponseWriter) shouldCompress(b []byte) bool {
 		return false
 	}
 
-	contentType := w.Header().Get("Content-Type")
+	contentType := strings.ToLower(w.Header().Get("Content-Type"))
 	if contentType == "" {
 		contentType = http.DetectContentType(b)
 		w.Header().Set("Content-Type", contentType)
@@ -125,4 +112,16 @@ func (w *gzipResponseWriter) shouldCompress(b []byte) bool {
 	}
 
 	return false
+}
+
+func (w *gzipResponseWriter) Close() {
+	// When the body is empty, Write() may be simply skipped and thus
+	// header is also skipped.  Manually call Write() to ensure header
+	// is written and the status code is correct.
+	if !w.headersWritten {
+		w.Write(nil)
+	}
+	if w.gzipWriter != nil {
+		w.gzipWriter.Close()
+	}
 }
