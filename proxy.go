@@ -232,24 +232,31 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 	ctx := resp.Request.Context()
 	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
 
+	// Content-Type may be missing, especially in a redirection response
+	// without body.
 	contentType := resp.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		slog.Error("invalid Content-Type", "value", contentType, "error", err)
-		return errors.New("invalid Content-Type")
+	if contentType != "" {
+		mediaType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			slog.Warn("invalid Content-Type", "value", contentType,
+				"error", err)
+		} else {
+			contentType = mediaType
+		}
 	}
 
 	// slog.Debug("origin response", "response", resp, "request", resp.Request)
 
 	// text/css: deal with url() in background attribute, etc.
-	if mediaType == "text/html" ||
-		mediaType == "text/javascript" ||
-		mediaType == "text/css" {
+	if contentType == "text/html" ||
+		contentType == "text/javascript" ||
+		contentType == "text/css" {
 
 		encoding := resp.Header.Get("Content-Encoding")
 		defer resp.Body.Close()
 
 		var body []byte
+		var err error
 		if encoding == "gzip" {
 			gr, err := gzip.NewReader(resp.Body)
 			if err != nil {
@@ -275,7 +282,7 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 		}
 
 		newBody := wp.translateURLs(body, reqInfo)
-		slog.Debug("translated body", "media_type", mediaType,
+		slog.Debug("translated body", "content_type", contentType,
 			"old_length", len(body), "new_length", len(newBody))
 
 		resp.Body = io.NopCloser(bytes.NewBuffer(newBody))
