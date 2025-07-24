@@ -284,7 +284,7 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 
 	}
 
-	// TODO: Deal with headers: Set-Cookie, Referer, Origin, Refresh, ...
+	// TODO: Deal with headers: Referer, Origin, ...
 	if location := resp.Header.Get("Location"); location != "" {
 		newLoc := wp.translateURLs([]byte(location), reqInfo)
 		resp.Header.Set("Location", string(newLoc))
@@ -292,6 +292,15 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 	if refresh := resp.Header.Get("Refresh"); refresh != "" {
 		newRefresh := wp.translateURLs([]byte(refresh), reqInfo)
 		resp.Header.Set("Refresh", string(newRefresh))
+	}
+
+	// Fix Set-Cookie headers.
+	cookies := resp.Cookies()
+	resp.Header.Del("Set-Cookie")
+	for _, c := range cookies {
+		c.Domain = ""
+		c.Secure = (reqInfo.scheme == "https")
+		resp.Header.Add("Set-Cookie", c.String())
 	}
 
 	// Delete some unwanted headers.
