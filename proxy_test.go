@@ -323,19 +323,15 @@ func TestReWikiURL(t *testing.T) {
 			// Check matched values by name
 			if prefix := result["prefix"]; prefix != tc.prefix {
 				t.Errorf("matched wrong prefix %q, expected %q", prefix, tc.prefix)
-				t.Fail()
 			}
 			if scheme := result["scheme"]; scheme != tc.scheme {
 				t.Errorf("matched wrong scheme %q, expected %q", scheme, tc.scheme)
-				t.Fail()
 			}
 			if slashes := result["slashes"]; slashes != tc.slashes {
 				t.Errorf("matched wrong slashes %q, expected %q", slashes, tc.slashes)
-				t.Fail()
 			}
 			if domain := result["domain"]; domain != tc.domain {
 				t.Errorf("matched wrong domain %q, expected %q", domain, tc.domain)
-				t.Fail()
 			}
 		})
 	}
