@@ -109,6 +109,15 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Strip the "wikiproxy" cookie to avoid proxying it.
+		cookies := []string{}
+		for _, c := range r.Cookies() {
+			if c.Name != cookieName {
+				cookies = append(cookies, c.String())
+			}
+		}
+		r.Header.Set("Cookie", strings.Join(cookies, "; "))
+
 		next.ServeHTTP(w, r)
 	})
 }
