@@ -39,6 +39,8 @@ type Authenticator struct {
 	hmac hash.Hash
 	// Mutex to protect hmac from concurrent accesses.
 	mutex sync.Mutex
+	// Allow to override the clock to accelerate tests.
+	clock iClock
 }
 
 type authInfo struct {
@@ -69,6 +71,10 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 		slog.Info("generated a random HMAC secret")
 	}
 	a.hmac = hmac.New(md5.New, secret)
+
+	if a.clock == nil {
+		a.clock = realClock{}
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookieSecure := (r.TLS != nil)
@@ -102,7 +108,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if info.Expires <= time.Now().Unix() {
+		if info.Expires <= a.clock.Now().Unix() {
 			setCookie.Value = a.makeCookie(nil)
 			slog.Debug("replaced cookie", "cookie", setCookie)
 			http.SetCookie(w, setCookie)
@@ -163,7 +169,7 @@ func (a *Authenticator) makeCookie(info *authInfo) string {
 	if info == nil {
 		info = &authInfo{
 			Tries:   a.Retries,
-			Expires: time.Now().Unix() + int64(a.WaitTime),
+			Expires: a.clock.Now().Unix() + int64(a.WaitTime),
 		}
 	}
 	if info.SID == "" {
@@ -172,9 +178,9 @@ func (a *Authenticator) makeCookie(info *authInfo) string {
 		info.SID = base64.URLEncoding.EncodeToString(sid)
 	}
 	if info.Tries == 0 {
-		info.Expires = time.Now().Unix() + int64(a.TTL)
+		info.Expires = a.clock.Now().Unix() + int64(a.TTL)
 	} else if info.Expires == 0 {
-		info.Expires = time.Now().Unix() + int64(a.WaitTime)
+		info.Expires = a.clock.Now().Unix() + int64(a.WaitTime)
 	}
 	slog.Debug("made authInfo", "value", info)
 
@@ -193,4 +199,16 @@ func (a *Authenticator) sign(data string) string {
 	result := a.hmac.Sum(nil)
 
 	return hex.EncodeToString(result)
+}
+
+// ---------------------------------------------------------------------
+
+type iClock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time {
+	return time.Now()
 }
