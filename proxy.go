@@ -56,6 +56,18 @@ func NewWikiProxy(proxy string) (*WikiProxy, error) {
 		Rewrite:        wp.rewrite,
 		ModifyResponse: wp.modifyResponse,
 		Transport:      transport,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.Error("proxy error", "host", r.Host,
+				"method", r.Method, "url", r.URL,
+				"header", r.Header, "error", err)
+			if errors.Is(err, context.Canceled) {
+				http.Error(w, "gateway timeout",
+					http.StatusGatewayTimeout)
+			} else {
+				http.Error(w, "bad gateway timeout",
+					http.StatusBadGateway)
+			}
+		},
 	}
 
 	return &wp, nil
