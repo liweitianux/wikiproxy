@@ -56,6 +56,20 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 		cookieMaxAge = 86400 // seconds
 	)
 
+	// Initialize HMAC.
+	secret := a.Secret
+	if len(secret) == 0 {
+		secret = make([]byte, 33)
+		_, err := rand.Read(secret)
+		if err != nil {
+			// crypto/rand.Read() will always succeed on Go 1.24+,
+			// but we're using Go 1.21+ in go.mod.
+			panic(err)
+		}
+		slog.Info("generated a random HMAC secret")
+	}
+	a.hmac = hmac.New(md5.New, secret)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookieSecure := (r.TLS != nil)
 		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
@@ -171,22 +185,6 @@ func (a *Authenticator) makeCookie(info *authInfo) string {
 }
 
 func (a *Authenticator) sign(data string) string {
-	if a.hmac == nil {
-		secret := a.Secret
-		if len(secret) == 0 {
-			secret = make([]byte, 33)
-			_, err := rand.Read(secret)
-			if err != nil {
-				// crypto/rand.Read() will always succeed on Go
-				// 1.24+, but we're using Go 1.21+ in go.mod.
-				panic(err)
-			}
-			slog.Info("generated a random HMAC secret")
-		}
-		a.hmac = hmac.New(md5.New, secret)
-		slog.Info("created HMAC")
-	}
-
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
