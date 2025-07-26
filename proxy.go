@@ -291,50 +291,62 @@ func (wp *WikiProxy) modifyBody(resp *http.Response, reqInfo *wpRequestInfo) err
 		}
 	}
 
+	modifyMIMEs := []string{
+		"text/html",
+		"text/javascript", // dynamically loaded contents
+		"text/css",        // url() in background attribute, etc.
+	}
+	doModify := false
+	for _, ct := range modifyMIMEs {
+		if contentType == ct {
+			doModify = true
+			break
+		}
+	}
+	if !doModify {
+		return nil
+	}
+
 	// slog.Debug("origin response", "response", resp, "request", resp.Request)
 
-	// text/css: deal with url() in background attribute, etc.
-	if contentType == "text/html" ||
-		contentType == "text/javascript" ||
-		contentType == "text/css" {
+	var body []byte
+	var err error
+	defer resp.Body.Close()
 
-		encoding := resp.Header.Get("Content-Encoding")
-		defer resp.Body.Close()
-
-		var body []byte
-		var err error
-		if encoding == "gzip" {
-			gr, err := gzip.NewReader(resp.Body)
-			if err != nil {
-				slog.Error("failed to create gzip reader", "error", err,
-					"response", resp, "request", resp.Request)
-				return errors.New("gzip body read failure")
-			}
-			body, err = io.ReadAll(gr)
-			gr.Close()
-			if err != nil {
-				slog.Error("failed to read gzip body", "error", err,
-					"response", resp, "request", resp.Request)
-				return errors.New("gzip body read failure")
-			}
-		} else {
-			// Assume plain text, as we enforced in Rewrite().
-			body, err = io.ReadAll(resp.Body)
-			if err != nil {
-				slog.Error("failed to read body", "error", err,
-					"response", resp, "request", resp.Request)
-				return errors.New("body read failure")
-			}
+	switch encoding := resp.Header.Get("Content-Encoding"); encoding {
+	case "", "identity":
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			slog.Error("failed to read body", "error", err,
+				"response", resp, "request", resp.Request)
+			return errors.New("body read failure")
 		}
-
-		newBody := wp.translateURLs(body, reqInfo)
-		slog.Debug("translated body", "content_type", contentType,
-			"old_length", len(body), "new_length", len(newBody))
-
-		resp.Body = io.NopCloser(bytes.NewBuffer(newBody))
-		resp.Header.Set("Content-Length", strconv.Itoa(len(newBody)))
-		resp.Header.Del("Content-Encoding")
+	case "gzip":
+		gr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			slog.Error("failed to create gzip reader", "error", err,
+				"response", resp, "request", resp.Request)
+			return errors.New("gzip body read failure")
+		}
+		body, err = io.ReadAll(gr)
+		gr.Close()
+		if err != nil {
+			slog.Error("failed to read gzip body", "error", err,
+				"response", resp, "request", resp.Request)
+			return errors.New("gzip body read failure")
+		}
+	default:
+		// Can only be plain text or gzip, as we enforced in Rewrite().
+		panic("impossible Content-Encoding: " + encoding)
 	}
+
+	newBody := wp.translateURLs(body, reqInfo)
+	slog.Debug("translated body", "content_type", contentType,
+		"old_length", len(body), "new_length", len(newBody))
+
+	resp.Body = io.NopCloser(bytes.NewBuffer(newBody))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(newBody)))
+	resp.Header.Del("Content-Encoding")
 
 	return nil
 }
