@@ -57,15 +57,26 @@ func NewWikiProxy(proxy string) (*WikiProxy, error) {
 		ModifyResponse: wp.modifyResponse,
 		Transport:      transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if errors.Is(err, context.Canceled) {
+				slog.Debug("client closed connection", "host", r.Host,
+					"method", r.Method, "url", r.URL)
+				// No need to send error.
+				return
+			}
+
 			slog.Error("proxy error", "host", r.Host,
 				"method", r.Method, "url", r.URL,
 				"header", r.Header, "error", err)
-			if errors.Is(err, context.Canceled) {
-				http.Error(w, "gateway timeout",
+
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				http.Error(w, "network timeout",
+					http.StatusGatewayTimeout)
+			} else if errors.Is(err, context.DeadlineExceeded) {
+				http.Error(w, "request timeout",
 					http.StatusGatewayTimeout)
 			} else {
-				http.Error(w, "bad gateway timeout",
-					http.StatusBadGateway)
+				http.Error(w, "bad gateway", http.StatusBadGateway)
 			}
 		},
 	}
