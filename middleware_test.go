@@ -79,6 +79,25 @@ func TestRecoveryMiddleware(t *testing.T) {
 			t.Errorf("Expected error message in body, got %q", string(body))
 		}
 	})
+
+	t.Run("ErrAbortHandler", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != http.ErrAbortHandler {
+				t.Errorf("Expected panic(http.ErrAbortHandler), got: %v", r)
+			}
+		}()
+
+		handler := RecoveryMiddleware(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				panic(http.ErrAbortHandler)
+			}))
+
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		t.Fatal("Expected panic, but ServeHTTP returned normally")
+	})
 }
 
 func TestGzipMiddleware(t *testing.T) {

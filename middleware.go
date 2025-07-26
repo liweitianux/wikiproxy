@@ -21,6 +21,17 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
+				if err == http.ErrAbortHandler {
+					// ReverseProxy() will raise this panic
+					// when it fails to copy response to
+					// the client (e.g., client prematurely
+					// closes the connection).  Propagate
+					// this panic and let http.Server
+					// handle it, which basically ignores
+					// it and aborts the connection.
+					panic(err)
+				}
+
 				slog.Error("***PANIC***", "host", r.Host,
 					"method", r.Method, "url", r.URL,
 					"header", r.Header, "error", err,
