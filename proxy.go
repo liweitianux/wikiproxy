@@ -244,6 +244,40 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 	ctx := resp.Request.Context()
 	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
 
+	if err := wp.modifyBody(resp, reqInfo); err != nil {
+		return err
+	}
+
+	if location := resp.Header.Get("Location"); location != "" {
+		newLoc := wp.translateURLs([]byte(location), reqInfo)
+		resp.Header.Set("Location", string(newLoc))
+	}
+	if refresh := resp.Header.Get("Refresh"); refresh != "" {
+		newRefresh := wp.translateURLs([]byte(refresh), reqInfo)
+		resp.Header.Set("Refresh", string(newRefresh))
+	}
+
+	// Fix Set-Cookie headers.
+	cookies := resp.Cookies()
+	resp.Header.Del("Set-Cookie")
+	for _, c := range cookies {
+		c.Domain = ""
+		c.Secure = (reqInfo.scheme == "https")
+		resp.Header.Add("Set-Cookie", c.String())
+	}
+
+	// Delete some unwanted headers.
+	resp.Header.Del("Strict-Transport-Security")
+	resp.Header.Del("Report-To")
+	resp.Header.Del("Reporting-Endpoints")
+	resp.Header.Del("Nel") // Network Error Logging
+	resp.Header.Del("X-Client-Ip")
+	resp.Header.Del("Transfer-Encoding") // prevent from chunking
+
+	return nil
+}
+
+func (wp *WikiProxy) modifyBody(resp *http.Response, reqInfo *wpRequestInfo) error {
 	// Content-Type may be missing, especially in a redirection response
 	// without body.
 	contentType := resp.Header.Get("Content-Type")
@@ -300,35 +334,7 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 		resp.Body = io.NopCloser(bytes.NewBuffer(newBody))
 		resp.Header.Set("Content-Length", strconv.Itoa(len(newBody)))
 		resp.Header.Del("Content-Encoding")
-
 	}
-
-	// TODO: Deal with headers: Referer, Origin, ...
-	if location := resp.Header.Get("Location"); location != "" {
-		newLoc := wp.translateURLs([]byte(location), reqInfo)
-		resp.Header.Set("Location", string(newLoc))
-	}
-	if refresh := resp.Header.Get("Refresh"); refresh != "" {
-		newRefresh := wp.translateURLs([]byte(refresh), reqInfo)
-		resp.Header.Set("Refresh", string(newRefresh))
-	}
-
-	// Fix Set-Cookie headers.
-	cookies := resp.Cookies()
-	resp.Header.Del("Set-Cookie")
-	for _, c := range cookies {
-		c.Domain = ""
-		c.Secure = (reqInfo.scheme == "https")
-		resp.Header.Add("Set-Cookie", c.String())
-	}
-
-	// Delete some unwanted headers.
-	resp.Header.Del("Strict-Transport-Security")
-	resp.Header.Del("Report-To")
-	resp.Header.Del("Reporting-Endpoints")
-	resp.Header.Del("Nel") // Network Error Logging
-	resp.Header.Del("X-Client-Ip")
-	resp.Header.Del("Transfer-Encoding") // prevent from chunking
 
 	return nil
 }
