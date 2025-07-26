@@ -27,7 +27,7 @@ import (
 
 type WikiProxy struct {
 	// The proxy<->target domains.
-	// The proxy domain may be wildcard that begins with a '*'.
+	// The proxy domain may be wildcard that begins with '*.'.
 	domains map[string]string
 	// The proxy handler to visit Wikipedia.
 	handler *httputil.ReverseProxy
@@ -242,7 +242,7 @@ func (wp *WikiProxy) rewrite(r *httputil.ProxyRequest) {
 
 	r.Out.URL = reqInfo.target
 	r.Out.Host = "" // so will use r.Out.URL.Host
-	slog.Debug("set target", "url", r.Out.URL)
+	slog.Debug("set target", "url", reqInfo.target)
 
 	if strings.Contains(r.In.Header.Get("Accept-Encoding"), "gzip") {
 		// modifyResponse() only supports gzip.
