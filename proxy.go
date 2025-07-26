@@ -278,6 +278,13 @@ func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 }
 
 func (wp *WikiProxy) modifyBody(resp *http.Response, reqInfo *wpRequestInfo) error {
+	// Wikipedia may return a 304 (Not Modified) with an empty body but
+	// setting 'Content-Encoding: gzip', which would cause gzip.NewReader()
+	// to fail with error=EOF.  So check the content length first.
+	if resp.ContentLength == 0 {
+		return nil
+	}
+
 	// Content-Type may be missing, especially in a redirection response
 	// without body.
 	contentType := resp.Header.Get("Content-Type")
