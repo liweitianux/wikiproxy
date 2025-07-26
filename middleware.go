@@ -21,8 +21,12 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				slog.Error("***PANIC***", "error", err, "stack", debug.Stack())
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				slog.Error("***PANIC***", "host", r.Host,
+					"method", r.Method, "url", r.URL,
+					"header", r.Header, "error", err,
+					"stack", debug.Stack())
+				http.Error(w, "internal server error",
+					http.StatusInternalServerError)
 			}
 		}()
 
