@@ -1,0 +1,18 @@
+[Unit]
+Description=Simple Wikipedia Proxy
+After=network.target network-online.target nss-lookup.target
+
+[Service]
+Type=simple
+ExecStart=/opt/wikiproxy/wikiproxy -config /opt/wikiproxy/wikiproxy.toml
+PrivateTmp=true
+Restart=on-failure
+RestartSec=5
+
+# NOTE: Don't use 'User=nobody' to fix the warning:
+# "Special user nobody configured, this is not safe!"
+# Require systemd >= 232
+DynamicUser=yes
+
+[Install]
+WantedBy=multi-user.target
