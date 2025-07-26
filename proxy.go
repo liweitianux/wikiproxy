@@ -237,6 +237,10 @@ func (wp *WikiProxy) rewrite(r *httputil.ProxyRequest) {
 		// modifyResponse() only supports gzip.
 		r.Out.Header.Set("Accept-Encoding", "gzip")
 	}
+
+	// Simply remove the 'Referer' header: (1) avoid blocking based on
+	// referrer sites; (2) improve privacy.
+	r.Out.Header.Del("Referer")
 }
 
 // Callback of ReverseProxy to modify the response.
