@@ -21,6 +21,8 @@ Features
 
 * Minimal and self-contained.
 
+* Good unit tests.
+
 License
 -------
 MIT License
