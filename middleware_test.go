@@ -228,14 +228,14 @@ func TestGzipMiddleware(t *testing.T) {
 			var body []byte
 			var err error
 			if tc.expectCompressed {
-				var buf bytes.Buffer
-				gzr, err := gzip.NewReader(resp.Body)
-				if err != nil {
-					t.Fatalf("Failed to create gzip reader: %v", err)
+				var gzr *gzip.Reader
+				gzr, err = gzip.NewReader(resp.Body)
+				if err == nil {
+					var buf bytes.Buffer
+					_, err = io.Copy(&buf, gzr)
+					gzr.Close()
+					body = buf.Bytes()
 				}
-				_, err = io.Copy(&buf, gzr)
-				gzr.Close()
-				body = buf.Bytes()
 			} else {
 				body, err = io.ReadAll(resp.Body)
 			}
