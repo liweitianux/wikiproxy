@@ -117,6 +117,10 @@ type wpRequestInfo struct {
 	scheme string
 }
 
+type wpRequestInfoKeyType struct{}
+
+var wpRequestInfoKey = wpRequestInfoKeyType{}
+
 func (wp *WikiProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("request", "host", r.Host, "url", r.URL, "header", r.Header,
 		"tls", r.TLS != nil)
@@ -153,7 +157,7 @@ func (wp *WikiProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("extra request info", "value", reqInfo)
 
-	ctx := context.WithValue(r.Context(), "wpRequestInfo", reqInfo)
+	ctx := context.WithValue(r.Context(), wpRequestInfoKey, reqInfo)
 	r = r.WithContext(ctx)
 
 	wp.handler.ServeHTTP(w, r)
@@ -238,7 +242,7 @@ func (wp *WikiProxy) getTarget(reqURL *url.URL, site string) *url.URL {
 // Callback of ReverseProxy to rewrite the request.
 func (wp *WikiProxy) rewrite(r *httputil.ProxyRequest) {
 	ctx := r.In.Context()
-	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
+	reqInfo := ctx.Value(wpRequestInfoKey).(*wpRequestInfo)
 
 	r.Out.URL = reqInfo.target
 	r.Out.Host = "" // so will use r.Out.URL.Host
@@ -257,7 +261,7 @@ func (wp *WikiProxy) rewrite(r *httputil.ProxyRequest) {
 // Callback of ReverseProxy to modify the response.
 func (wp *WikiProxy) modifyResponse(resp *http.Response) error {
 	ctx := resp.Request.Context()
-	reqInfo := ctx.Value("wpRequestInfo").(*wpRequestInfo)
+	reqInfo := ctx.Value(wpRequestInfoKey).(*wpRequestInfo)
 
 	if err := wp.modifyBody(resp, reqInfo); err != nil {
 		return err
